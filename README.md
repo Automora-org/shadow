@@ -1,0 +1,111 @@
+# Shadow
+
+Windows tray app that freezes Internal Observer pending captures and blocks network for one configured process.
+
+## Features
+
+- Configure **process name**, **pending directory**, and **hotkeys**
+- Settings persist in `config.json` next to the app
+- Hide to **system tray**
+- **Disable hotkey (default F8)** — Shadow ON:
+  - Capture a screenshot + `.caption` / `.clicks` / `.keyboards`
+  - Watch the pending directory; replace any new observer files with the frozen set (growing timestamps)
+  - Block inbound/outbound network for the configured process via Windows Firewall
+- **Enable hotkey (default F9)** — Shadow OFF:
+  - Stop replacements
+  - Remove the firewall block
+
+## Defaults
+
+| Setting | Default |
+|---------|---------|
+| Process name | `wordpress.exe` |
+| Pending directory | `%USERPROFILE%\.internal-observer\pending\` |
+| Disable hotkey | `F8` |
+| Enable hotkey | `F9` |
+
+## Requirements
+
+- Windows 10/11
+- [uv](https://docs.astral.sh/uv/)
+- Python 3.11+ (installed automatically by uv if needed)
+- Administrator rights for firewall network blocking
+
+## Setup
+
+```bash
+uv sync
+```
+
+Include build tools (PyInstaller):
+
+```bash
+uv sync --group dev
+```
+
+## Run (development)
+
+```bash
+uv run shadow
+```
+
+Or double-click:
+
+- `run.bat` — sync + launch (UAC may appear)
+- `run_as_admin.bat` — force elevation
+
+## Build application
+
+Create a standalone `Shadow.exe` (windowed, requests Administrator):
+
+```bash
+uv sync --group dev
+uv run pyinstaller --noconfirm --clean shadow.spec
+```
+
+Or double-click `build.bat`.
+
+Output:
+
+```text
+dist/Shadow.exe
+```
+
+`config.json` is created beside the exe on first run.
+
+### Distribute
+
+Copy `dist/Shadow.exe` to any Windows machine. No Python install required. Run as Administrator for network blocking.
+
+## Project layout
+
+```text
+pyproject.toml     # project metadata + dependencies (uv)
+uv.lock            # locked dependency versions
+shadow.spec        # PyInstaller build spec
+shadow/            # application package
+shadow_entry.py    # frozen entrypoint for the exe build
+build.bat          # one-click Windows build
+run.bat            # one-click run via uv
+README.md
+```
+
+## Configuration
+
+Saved to `config.json` in the app directory (repo root in development, next to `Shadow.exe` when frozen):
+
+```json
+{
+  "process_name": "wordpress.exe",
+  "pending_dir": "C:\\Users\\You\\.internal-observer\\pending\\",
+  "disable_hotkey": "F8",
+  "enable_hotkey": "F9"
+}
+```
+
+## Notes
+
+- Network blocking uses `netsh advfirewall` rules named `ShadowAppBlock_*` and cleans them up on Shadow OFF / exit.
+- Global hotkeys work best when the app is elevated.
+- Only one process name is blocked (the configured executable path).
+- Module packaging uses Hatchling via `pyproject.toml`; day-to-day installs and runs go through **uv**.

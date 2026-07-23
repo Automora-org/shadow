@@ -1,0 +1,115 @@
+from __future__ import annotations
+
+import threading
+from typing import Callable
+
+from .capture import CaptureBundle, capture_screen_bundle
+from .config import Config
+from .hotkeys import HotkeyManager
+from .network import NetworkBlocker, cleanup_all_shadow_rules
+from .watcher import PendingReplacer
+
+
+StatusCallback = Callable[[str], None]
+
+
+class ShadowController:
+    def __init__(self, config: Config, on_status: StatusCallback | None = None) -> None:
+        self.config = config
+        self.on_status = on_status or (lambda _msg: None)
+        self._lock = threading.RLock()
+        self._shadow_active = False
+        self._bundle: CaptureBundle | None = None
+        self._replacer: PendingReplacer | None = None
+        self._blocker = NetworkBlocker()
+        self._hotkeys = HotkeyManager()
+
+    @property
+    def shadow_active(self) -> bool:
+        return self._shadow_active
+
+    def start_hotkeys(self) -> None:
+        self._hotkeys.configure(
+            self.config.disable_hotkey,
+            self.config.enable_hotkey,
+            on_disable=self.activate_shadow,
+            on_enable=self.deactivate_shadow,
+        )
+
+    def update_config(self, config: Config) -> None:
+        with self._lock:
+            was_active = self._shadow_active
+            if was_active:
+                self._deactivate_locked(notify=False)
+            self.config = config
+            self._hotkeys.rebind(config.disable_hotkey, config.enable_hotkey)
+            if was_active:
+                self._activate_locked()
+
+    def activate_shadow(self) -> None:
+        with self._lock:
+            self._activate_locked()
+
+    def deactivate_shadow(self) -> None:
+        with self._lock:
+            self._deactivate_locked(notify=True)
+
+    def shutdown(self) -> None:
+        with self._lock:
+            self._deactivate_locked(notify=False)
+            self._hotkeys.stop()
+            cleanup_all_shadow_rules()
+
+    def _activate_locked(self) -> None:
+        if self._shadow_active:
+            self._emit("Shadow already active.")
+            return
+        try:
+            bundle = capture_screen_bundle()
+        except Exception as exc:
+            self._emit(f"Screenshot failed: {exc}")
+            return
+
+        pending = self.config.pending_path()
+        replacer = PendingReplacer(pending, bundle)
+        try:
+            replacer.start()
+        except Exception as exc:
+            self._emit(f"Pending watcher failed: {exc}")
+            return
+
+        ok, msg = self._blocker.start(self.config.normalized_process_name())
+        self._bundle = bundle
+        self._replacer = replacer
+        self._shadow_active = True
+        status = "Shadow ON — captures frozen, network blocked."
+        if not ok:
+            status = f"Shadow ON (network warn): {msg}"
+        else:
+            status = f"Shadow ON. {msg}"
+        self._emit(status)
+
+    def _deactivate_locked(self, notify: bool) -> None:
+        if self._replacer is not None:
+            try:
+                self._replacer.stop()
+            except Exception:
+                pass
+            self._replacer = None
+        try:
+            _, msg = self._blocker.stop()
+        except Exception as exc:
+            msg = str(exc)
+        self._bundle = None
+        was = self._shadow_active
+        self._shadow_active = False
+        if notify and was:
+            self._emit(f"Shadow OFF. {msg}")
+        elif notify and not was:
+            self._emit("Shadow already off.")
+
+    def _emit(self, message: str) -> None:
+        try:
+            self.on_status(message)
+        except Exception:
+            pass

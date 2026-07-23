@@ -1,0 +1,14 @@
+# Shadow
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+*.log
+*.spec.bak
+
+# Keep local runtime config out of VCS if desired; leave tracked by default.
+# config.json
