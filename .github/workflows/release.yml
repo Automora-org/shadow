@@ -97,6 +97,9 @@ jobs:
           print(f"version -> {version}")
           PY
 
+      - name: Refresh lockfile version
+        run: uv lock
+
       - name: Install dependencies
         run: uv sync --frozen --group dev
 

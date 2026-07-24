@@ -86,14 +86,20 @@ dist/Shadow-<version>-windows-x64-setup.exe
 
 ## GitHub Releases
 
-CI builds a **Windows Setup installer** (Inno Setup) and publishes a GitHub Release when you push a version tag:
+Use the release script so **every pending change is included** and the tree is clean afterward:
 
 ```bash
-git tag v1.0.1
-git push origin v1.0.1
+./scripts/release.sh 1.1.1
 ```
 
-Or run **Actions → Release → Run workflow** and enter a version (e.g. `1.0.1`).
+That script:
+
+1. Bumps `pyproject.toml`, `shadow/__init__.py`, and `uv.lock`
+2. Commits **all** current changes
+3. Refuses to tag if anything is still dirty
+4. Creates tag `v<version>` and pushes it
+
+Or run **Actions → Release → Run workflow** (only if `main` is already clean and versioned).
 
 Release asset:
 
@@ -108,6 +114,7 @@ Installer includes: modern wizard, Program Files install, Start Menu shortcuts, 
 ```text
 .github/workflows/release.yml  # build + GitHub Release
 installer/shadow.iss           # Inno Setup installer script
+scripts/release.sh             # clean version bump + tag + push
 pyproject.toml                 # project metadata + dependencies (uv)
 uv.lock                        # locked dependency versions
 shadow.spec                    # PyInstaller build spec
