@@ -1,0 +1,199 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 1.0.1). Leave empty to use pyproject.toml."
+        required: false
+        type: string
+      prerelease:
+        description: "Mark GitHub release as prerelease"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-windows:
+    name: Build Windows installer package
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      asset_name: ${{ steps.meta.outputs.asset_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Resolve version
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            TAG="${GITHUB_REF_NAME}"
+            VERSION="${TAG#v}"
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            VERSION="${{ inputs.version }}"
+            VERSION="${VERSION#v}"
+            TAG="v${VERSION}"
+          else
+            VERSION="$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' pyproject.toml | head -n1)"
+            TAG="v${VERSION}"
+          fi
+          if [[ -z "${VERSION}" ]]; then
+            echo "Could not resolve version" >&2
+            exit 1
+          fi
+          ASSET="Shadow-${VERSION}-windows-x64.zip"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "asset_name=${ASSET}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version=${VERSION} tag=${TAG} asset=${ASSET}"
+
+      - name: Sync version into pyproject.toml
+        shell: bash
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import os, re
+          version = os.environ["VERSION"]
+          path = Path("pyproject.toml")
+          text = path.read_text(encoding="utf-8")
+          updated, n = re.subn(
+              r'(?m)^version\s*=\s*"[^"]*"',
+              f'version = "{version}"',
+              text,
+              count=1,
+          )
+          if n != 1:
+              raise SystemExit("Failed to update version in pyproject.toml")
+          path.write_text(updated, encoding="utf-8")
+          print(f"pyproject.toml -> {version}")
+          PY
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Verify Inter font asset
+        shell: bash
+        run: |
+          test -f shadow/assets/Inter-Regular.ttf
+          ls -lh shadow/assets/Inter-Regular.ttf
+
+      - name: Build Shadow.exe
+        run: uv run pyinstaller --noconfirm --clean shadow.spec
+
+      - name: Package installer zip
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          ASSET_NAME: ${{ steps.meta.outputs.asset_name }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (-not (Test-Path "dist\Shadow.exe")) {
+            throw "dist\Shadow.exe was not produced"
+          }
+
+          $stage = "dist\Shadow-install"
+          if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "dist\Shadow.exe" "$stage\Shadow.exe"
+
+          $readme = @"
+          Shadow $env:VERSION — Windows
+
+          Install
+          1. Extract this zip anywhere (example: %LOCALAPPDATA%\Shadow).
+          2. Run Install.bat, or right-click Shadow.exe → Run as administrator
+             (required for network blocking / firewall rules).
+          3. Optional: pin Shadow.exe to the taskbar or create a shortcut.
+
+          Notes
+          - config.json is created next to Shadow.exe on first run.
+          - Default hotkeys: F8 = Shadow ON, F9 = Shadow OFF.
+          - No Python install is required.
+          "@
+          Set-Content -Path "$stage\README.txt" -Value $readme.Trim() -Encoding UTF8
+
+          $installBat = @(
+            '@echo off'
+            'setlocal'
+            'set "DEST=%LOCALAPPDATA%\Shadow"'
+            'mkdir "%DEST%" >nul 2>&1'
+            'copy /Y "%~dp0Shadow.exe" "%DEST%\Shadow.exe" >nul'
+            'echo Installed to %DEST%\Shadow.exe'
+            'echo Launching elevated...'
+            'powershell -NoProfile -Command "Start-Process -FilePath ''%DEST%\Shadow.exe'' -Verb RunAs"'
+            'endlocal'
+          )
+          Set-Content -Path "$stage\Install.bat" -Value $installBat -Encoding ASCII
+
+          $zipPath = "dist\$env:ASSET_NAME"
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          Compress-Archive -Path "$stage\*" -DestinationPath $zipPath -Force
+          Get-Item $zipPath | Format-List FullName, Length
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.asset_name }}
+          path: dist/${{ steps.meta.outputs.asset_name }}
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Windows package
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-windows.outputs.asset_name }}
+          path: release-assets
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.build-windows.outputs.tag }}
+          name: Shadow ${{ needs.build-windows.outputs.version }}
+          generate_release_notes: true
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
+          fail_on_unmatched_files: true
+          files: |
+            release-assets/${{ needs.build-windows.outputs.asset_name }}
+          body: |
+            ## Shadow ${{ needs.build-windows.outputs.version }}
+
+            ### Install (Windows x64)
+            1. Download `Shadow-${{ needs.build-windows.outputs.version }}-windows-x64.zip`
+            2. Extract it
+            3. Run `Install.bat` **or** right-click `Shadow.exe` → **Run as administrator**
+
+            Network blocking requires Administrator (UAC).
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
