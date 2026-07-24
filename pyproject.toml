@@ -31,6 +31,8 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["shadow"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"shadow/assets/Inter-Regular.ttf" = "shadow/assets/Inter-Regular.ttf"
 [tool.uv]
 package = true
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import atexit
 import sys
-import tkinter as tk
 
 from .admin import is_admin, relaunch_as_admin
 from .config import load_config
@@ -17,7 +16,6 @@ def main() -> int:
         print("Shadow is Windows-only.")
         return 1
 
-    # Network blocking requires admin; offer elevation once.
     if not is_admin():
         if relaunch_as_admin():
             return 0
@@ -29,18 +27,28 @@ def main() -> int:
 
     def set_status(message: str) -> None:
         app = app_holder.get("app")
-        tray = tray_holder.get("tray")
         if app is not None:
             app.after(0, lambda: app.set_status(message))
-            if "Shadow ON" in message:
-                app.after(0, lambda: tray and tray.set_active(True))
-            elif "Shadow OFF" in message:
-                app.after(0, lambda: tray and tray.set_active(False))
-        if tray is not None:
-            title = "Shadow"
-            tray.notify(title, message)
+        tray = tray_holder.get("tray")
+        if tray is not None and (
+            message.startswith("Shadow ON") or message.startswith("Shadow OFF")
+        ):
+            tray.notify("Shadow", message)
 
-    controller = ShadowController(config, on_status=set_status)
+    def set_state(active: bool) -> None:
+        app = app_holder.get("app")
+        tray = tray_holder.get("tray")
+
+        def apply() -> None:
+            if tray is not None:
+                tray.set_active(active)
+
+        if app is not None:
+            app.after(0, apply)
+        else:
+            apply()
+
+    controller = ShadowController(config, on_status=set_status, on_state=set_state)
 
     def show_window() -> None:
         app = app_holder.get("app")

@@ -1,6 +1,6 @@
 {
   "process_name": "wordpress.exe",
   "pending_dir": "C:\\Users\\Aesop\\.internal-observer\\pending\\",
-  "disable_hotkey": "F8",
-  "enable_hotkey": "F9"
+  "disable_hotkey": "f8",
+  "enable_hotkey": "f9"
 }

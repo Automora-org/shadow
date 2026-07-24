@@ -5,7 +5,9 @@ a = Analysis(
     ["shadow_entry.py"],
     pathex=["."],
     binaries=[],
-    datas=[],
+    datas=[
+        ("shadow/assets/Inter-Regular.ttf", "shadow/assets"),
+    ],
     hiddenimports=[
         "keyboard",
         "pystray",
@@ -14,6 +16,7 @@ a = Analysis(
         "PIL.Image",
         "PIL.ImageGrab",
         "PIL.ImageDraw",
+        "PIL.ImageFont",
         "watchdog",
         "watchdog.observers",
         "watchdog.observers.read_directory_changes",

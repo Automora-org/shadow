@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -16,9 +17,26 @@ def app_dir() -> Path:
 APP_DIR = app_dir()
 CONFIG_PATH = APP_DIR / "config.json"
 
+_EXE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*\.exe$", re.IGNORECASE)
+
 
 def _default_pending_dir() -> str:
     return str(Path.home() / ".internal-observer" / "pending") + "\\"
+
+
+def is_valid_exe_name(name: str) -> bool:
+    """Accept only a bare executable filename ending in .exe."""
+    value = (name or "").strip()
+    if not value or "/" in value or "\\" in value:
+        return False
+    return bool(_EXE_NAME_RE.fullmatch(value))
+
+
+def normalize_exe_name(name: str) -> str | None:
+    value = (name or "").strip()
+    if not is_valid_exe_name(value):
+        return None
+    return value
 
 
 @dataclass
@@ -31,12 +49,14 @@ class Config:
     def __post_init__(self) -> None:
         if not self.pending_dir:
             self.pending_dir = _default_pending_dir()
+        normalized = normalize_exe_name(self.process_name)
+        if normalized is None:
+            self.process_name = "wordpress.exe"
+        else:
+            self.process_name = normalized
 
     def normalized_process_name(self) -> str:
-        name = self.process_name.strip()
-        if name and not name.lower().endswith(".exe"):
-            name += ".exe"
-        return name
+        return normalize_exe_name(self.process_name) or "wordpress.exe"
 
     def pending_path(self) -> Path:
         return Path(self.pending_dir)
@@ -49,8 +69,11 @@ def load_config() -> Config:
         return cfg
     try:
         data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        process = str(data.get("process_name", "wordpress.exe"))
+        if not is_valid_exe_name(process):
+            process = "wordpress.exe"
         return Config(
-            process_name=str(data.get("process_name", "wordpress.exe")),
+            process_name=process,
             pending_dir=str(data.get("pending_dir") or _default_pending_dir()),
             disable_hotkey=str(data.get("disable_hotkey", "F8")).upper(),
             enable_hotkey=str(data.get("enable_hotkey", "F9")).upper(),

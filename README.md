@@ -4,12 +4,13 @@ Windows tray app that freezes Internal Observer pending captures and blocks netw
 
 ## Features
 
-- Configure **process name**, **pending directory**, and **hotkeys**
-- Settings persist in `config.json` next to the app
-- Hide to **system tray**
+- Configure **process name** (`.exe` only), **pending directory**, and **hotkeys**
+- Settings **auto-save** to `config.json` next to the app (no Save button)
+- Hotkeys are set by **clicking the button and pressing a key** (not typed)
+- Hide to **system tray** — icon turns **red** when Shadow is ON, **blue** when OFF
 - **Disable hotkey (default F8)** — Shadow ON:
-  - Capture a screenshot + `.caption` / `.clicks` / `.keyboards`
-  - Watch the pending directory; replace any new observer files with the frozen set (growing timestamps)
+  - Capture a screenshot with observer-style red overlay in **Inter** (`timestamp`, `Keys: 0 | Mouse: 0`, window title)
+  - Watch the pending directory; replace any new observer files with that frozen screen (same image, new overlay timestamps)
   - Block inbound/outbound network for the configured process via Windows Firewall
 - **Enable hotkey (default F9)** — Shadow OFF:
   - Stop replacements
@@ -77,29 +78,52 @@ dist/Shadow.exe
 
 Copy `dist/Shadow.exe` to any Windows machine. No Python install required. Run as Administrator for network blocking.
 
+## GitHub Releases
+
+CI builds a Windows install zip and publishes a GitHub Release when you push a version tag:
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+Or run **Actions → Release → Run workflow** and enter a version (e.g. `1.0.1`).
+
+Release asset:
+
+```text
+Shadow-<version>-windows-x64.zip
+```
+
+Contents: `Shadow.exe`, `Install.bat`, `README.txt`.
+
 ## Project layout
 
 ```text
-pyproject.toml     # project metadata + dependencies (uv)
-uv.lock            # locked dependency versions
-shadow.spec        # PyInstaller build spec
-shadow/            # application package
-shadow_entry.py    # frozen entrypoint for the exe build
-build.bat          # one-click Windows build
-run.bat            # one-click run via uv
+.github/workflows/release.yml  # build + GitHub Release
+pyproject.toml                 # project metadata + dependencies (uv)
+uv.lock                        # locked dependency versions
+shadow.spec                    # PyInstaller build spec
+shadow/                        # application package
+shadow/assets/Inter-Regular.ttf
+shadow_entry.py                # frozen entrypoint for the exe build
+build.bat                      # one-click Windows build
+run.bat                        # one-click run via uv
 README.md
 ```
 
 ## Configuration
 
-Saved to `config.json` in the app directory (repo root in development, next to `Shadow.exe` when frozen):
+Changes save automatically to `config.json` in the app directory (repo root in development, next to `Shadow.exe` when frozen).
+
+Process name must be a bare `.exe` filename (for example `wordpress.exe`). Hotkeys are captured by clicking the hotkey button, then pressing the desired key.
 
 ```json
 {
   "process_name": "wordpress.exe",
   "pending_dir": "C:\\Users\\You\\.internal-observer\\pending\\",
-  "disable_hotkey": "F8",
-  "enable_hotkey": "F9"
+  "disable_hotkey": "f8",
+  "enable_hotkey": "f9"
 }
 ```
 

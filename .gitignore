@@ -9,6 +9,4 @@ build/
 venv/
 *.log
 *.spec.bak
-
-# Keep local runtime config out of VCS if desired; leave tracked by default.
-# config.json
+config.json

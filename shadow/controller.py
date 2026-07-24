@@ -11,12 +11,19 @@ from .watcher import PendingReplacer
 
 
 StatusCallback = Callable[[str], None]
+StateCallback = Callable[[bool], None]
 
 
 class ShadowController:
-    def __init__(self, config: Config, on_status: StatusCallback | None = None) -> None:
+    def __init__(
+        self,
+        config: Config,
+        on_status: StatusCallback | None = None,
+        on_state: StateCallback | None = None,
+    ) -> None:
         self.config = config
         self.on_status = on_status or (lambda _msg: None)
+        self.on_state = on_state or (lambda _active: None)
         self._lock = threading.RLock()
         self._shadow_active = False
         self._bundle: CaptureBundle | None = None
@@ -36,14 +43,29 @@ class ShadowController:
             on_enable=self.deactivate_shadow,
         )
 
-    def update_config(self, config: Config) -> None:
+    def pause_hotkeys(self) -> None:
+        self._hotkeys.pause()
+
+    def resume_hotkeys(self) -> None:
+        self._hotkeys.resume()
+
+    def update_config(self, config: Config, *, reapply_if_active: bool = True) -> None:
         with self._lock:
             was_active = self._shadow_active
-            if was_active:
+            process_changed = (
+                config.normalized_process_name() != self.config.normalized_process_name()
+            )
+            pending_changed = config.pending_path() != self.config.pending_path()
+            hotkeys_changed = (
+                config.disable_hotkey.lower() != self.config.disable_hotkey.lower()
+                or config.enable_hotkey.lower() != self.config.enable_hotkey.lower()
+            )
+            if was_active and reapply_if_active and (process_changed or pending_changed):
                 self._deactivate_locked(notify=False)
             self.config = config
-            self._hotkeys.rebind(config.disable_hotkey, config.enable_hotkey)
-            if was_active:
+            if hotkeys_changed:
+                self._hotkeys.rebind(config.disable_hotkey, config.enable_hotkey)
+            if was_active and reapply_if_active and (process_changed or pending_changed):
                 self._activate_locked()
 
     def activate_shadow(self) -> None:
@@ -82,12 +104,11 @@ class ShadowController:
         self._bundle = bundle
         self._replacer = replacer
         self._shadow_active = True
-        status = "Shadow ON — captures frozen, network blocked."
+        self._emit_state(True)
         if not ok:
-            status = f"Shadow ON (network warn): {msg}"
+            self._emit(f"Shadow ON (network warn): {msg}")
         else:
-            status = f"Shadow ON. {msg}"
-        self._emit(status)
+            self._emit(f"Shadow ON. {msg}")
 
     def _deactivate_locked(self, notify: bool) -> None:
         if self._replacer is not None:
@@ -103,6 +124,8 @@ class ShadowController:
         self._bundle = None
         was = self._shadow_active
         self._shadow_active = False
+        if was:
+            self._emit_state(False)
         if notify and was:
             self._emit(f"Shadow OFF. {msg}")
         elif notify and not was:
@@ -111,5 +134,11 @@ class ShadowController:
     def _emit(self, message: str) -> None:
         try:
             self.on_status(message)
+        except Exception:
+            pass
+
+    def _emit_state(self, active: bool) -> None:
+        try:
+            self.on_state(active)
         except Exception:
             pass
