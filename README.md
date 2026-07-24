@@ -78,9 +78,15 @@ dist/Shadow.exe
 
 Copy `dist/Shadow.exe` to any Windows machine. No Python install required. Run as Administrator for network blocking.
 
+With [Inno Setup 6](https://jrsoftware.org/isinfo.php) installed, `build.bat` also produces a setup wizard:
+
+```text
+dist/Shadow-<version>-windows-x64-setup.exe
+```
+
 ## GitHub Releases
 
-CI builds a Windows install zip and publishes a GitHub Release when you push a version tag:
+CI builds a **Windows Setup installer** (Inno Setup) and publishes a GitHub Release when you push a version tag:
 
 ```bash
 git tag v1.0.1
@@ -92,22 +98,23 @@ Or run **Actions → Release → Run workflow** and enter a version (e.g. `1.0.1
 Release asset:
 
 ```text
-Shadow-<version>-windows-x64.zip
+Shadow-<version>-windows-x64-setup.exe
 ```
 
-Contents: `Shadow.exe`, `Install.bat`, `README.txt`.
+Installer includes: modern wizard, Program Files install, Start Menu shortcuts, optional desktop icon, optional sign-in autostart, and uninstaller.
 
 ## Project layout
 
 ```text
 .github/workflows/release.yml  # build + GitHub Release
+installer/shadow.iss           # Inno Setup installer script
 pyproject.toml                 # project metadata + dependencies (uv)
 uv.lock                        # locked dependency versions
 shadow.spec                    # PyInstaller build spec
 shadow/                        # application package
 shadow/assets/Inter-Regular.ttf
 shadow_entry.py                # frozen entrypoint for the exe build
-build.bat                      # one-click Windows build
+build.bat                      # one-click Windows build (+ installer if ISCC present)
 run.bat                        # one-click run via uv
 README.md
 ```

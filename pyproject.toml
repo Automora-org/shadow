@@ -1,6 +1,6 @@
 [project]
 name = "shadow"
-version = "1.0.0"
+version = "1.1.0"
 description = "Freeze observer captures and block a single process network on Windows."
 readme = "README.md"
 requires-python = ">=3.11"
